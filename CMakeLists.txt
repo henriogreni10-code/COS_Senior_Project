@@ -22,7 +22,6 @@ add_executable(MazeSolver
         src/algorithms/source/AStar.cpp
         src/metrics/metrics.cpp
         src/ui/RendererSFML.cpp
-        tests/test_main.cpp
         tests/test_utils.h
         tests/test_maze.cpp
         tests/test_containers.cpp

@@ -5,17 +5,15 @@
 #include <string>
 #include <functional>
 
-struct Result {
-    bool found = false;
-    std::vector<Coord> path;
-    std::size_t nodesExpanded = 0;
-    double timeMs = 0.0;
-};
+class Maze;
 
 class Algorithm {
 public:
-    using StepCallback = std::function<void(const Coord&)>;
+    using Coord = std::pair<int, int>;
+    using Path = std::vector<Coord>;
+    using VisitCallback = std::function<void(int, int)>;
+
     virtual ~Algorithm() = default;
-    virtual Result solve(const Maze& maze, StepCallback cb = nullptr) = 0;
-    virtual std::string name() const = 0;
+    virtual std::string getName() const = 0;
+    virtual Path solve(Maze& maze, VisitCallback onVisit = nullptr) = 0;
 };
