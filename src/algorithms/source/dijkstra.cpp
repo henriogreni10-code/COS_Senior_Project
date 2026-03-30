@@ -1,90 +1,84 @@
 #include "../header/dijkstra.h"
+#include "../../maze/Maze.h"
+#include <algorithm>
+#include <cmath>
+#include <limits>
 #include <queue>
 #include <vector>
-#include <algorithm>
-#include <limits>
-#include <chrono>
 
-static inline int keyD(const Coord& c, int w) {
-    return c.second * w + c.first;
+namespace {
+    int toIndex(const Algorithm::Coord& cell, int width) {
+        return cell.second * width + cell.first;
+    }
+
+    double heuristic(const Algorithm::Coord& a, const Algorithm::Coord& b) {
+        return std::abs(a.first - b.first) + std::abs(a.second - b.second);
+    }
+
+    Algorithm::Path reconstructPath(
+        const std::vector<Algorithm::Coord>& parent,
+        Algorithm::Coord start,
+        Algorithm::Coord goal,
+        int width
+    ) {
+        Algorithm::Path path;
+
+        if (goal != start && parent[toIndex(goal, width)] == Algorithm::Coord{-1, -1}) {
+            return path;
+        }
+
+        Algorithm::Coord current = goal;
+        while (current != start) {
+            path.push_back(current);
+            current = parent[toIndex(current, width)];
+        }
+
+        path.push_back(start);
+        std::reverse(path.begin(), path.end());
+        return path;
+    }
 }
 
-class DijkstraImpl : public Algorithm {
-public:
-    std::string name() const override { return "Dijkstra"; }
+std::string Dijkstra::getName() const {
+    return "A*";
+}
 
-    Result solve(const Maze& maze, StepCallback cb = nullptr) override {
-        Result r{};
-        auto t0 = std::chrono::high_resolution_clock::now();
+Algorithm::Path Dijkstra::solve(Maze& maze, VisitCallback onVisit) {
+    const int width = maze.width();
+    const int height = maze.height();
+    const int totalCells = width * height;
 
-        int w = maze.width();
-        int h = maze.height();
-        int n = w * h;
+    const Coord start = maze.getStart();
+    const Coord goal = maze.getGoal();
 
-        const double INF = std::numeric_limits<double>::infinity();
-        std::vector<double> dist(n, INF);
-        std::vector<Coord> parent(n, {-1, -1});
-        std::vector<int> visited(n, 0);
+    std::vector<bool> visited(totalCells, false);
+    std::vector<Coord> parent(totalCells, {-1, -1});
+    std::queue<Coord> q;
 
-        Coord start = maze.getStart();
-        Coord goal  = maze.getGoal();
+    q.push(start);
+    visited[toIndex(start, width)] = true;
 
-        auto cmp = [](const std::pair<double, Coord>& a,
-                      const std::pair<double, Coord>& b) {
-            return a.first > b.first;
-        };
-        std::priority_queue<
-            std::pair<double, Coord>,
-            std::vector<std::pair<double, Coord>>,
-            decltype(cmp)
-        > pq(cmp);
+    while (!q.empty()) {
+        Coord current = q.front();
+        q.pop();
 
-        int ks = keyD(start, w);
-        dist[ks] = 0.0;
-        pq.push({0.0, start});
-
-        while (!pq.empty()) {
-            auto [d, cur] = pq.top();
-            pq.pop();
-            int kc = keyD(cur, w);
-            if (visited[kc]) continue;
-            visited[kc] = 1;
-            r.nodesExpanded++;
-
-            if (cb) cb(cur);
-
-            if (cur == goal) {
-                r.found = true;
-                break;
-            }
-
-            for (auto nb : maze.neighbors(cur)) {
-                int kn = keyD(nb, w);
-                double nd = d + 1.0; // all edges weight 1
-                if (nd < dist[kn]) {
-                    dist[kn] = nd;
-                    parent[kn] = cur;
-                    pq.push({nd, nb});
-                }
-            }
+        if (onVisit) {
+            onVisit(current.first, current.second);
         }
 
-        if (r.found) {
-            Coord cur = goal;
-            while (cur != start) {
-                r.path.push_back(cur);
-                cur = parent[keyD(cur, w)];
-            }
-            r.path.push_back(start);
-            std::reverse(r.path.begin(), r.path.end());
+        if (current == goal) {
+            return reconstructPath(parent, start, goal, width);
         }
 
-        auto t1 = std::chrono::high_resolution_clock::now();
-        r.timeMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
-        return r;
+        for (const Coord& neighbor : maze.neighbors(current)) {
+            int index = toIndex(neighbor, width);
+            if (!visited[index]) {
+                visited[index] = true;
+                parent[index] = current;
+                q.push(neighbor);
+            }
+        }
     }
-};
 
-Algorithm* createDijkstra() {
-    return new DijkstraImpl();
+    return {};
 }

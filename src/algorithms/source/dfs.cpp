@@ -1,74 +1,84 @@
 #include "../header/dfs.h"
-#include <vector>
-#include <stack>
+#include "../../maze/Maze.h"
 #include <algorithm>
-#include <chrono>
+#include <cmath>
+#include <limits>
+#include <queue>
+#include <vector>
 
-static inline int keyDFS(const Coord& c, int w) {
-    return c.second * w + c.first;
+namespace {
+    int toIndex(const Algorithm::Coord& cell, int width) {
+        return cell.second * width + cell.first;
+    }
+
+    double heuristic(const Algorithm::Coord& a, const Algorithm::Coord& b) {
+        return std::abs(a.first - b.first) + std::abs(a.second - b.second);
+    }
+
+    Algorithm::Path reconstructPath(
+        const std::vector<Algorithm::Coord>& parent,
+        Algorithm::Coord start,
+        Algorithm::Coord goal,
+        int width
+    ) {
+        Algorithm::Path path;
+
+        if (goal != start && parent[toIndex(goal, width)] == Algorithm::Coord{-1, -1}) {
+            return path;
+        }
+
+        Algorithm::Coord current = goal;
+        while (current != start) {
+            path.push_back(current);
+            current = parent[toIndex(current, width)];
+        }
+
+        path.push_back(start);
+        std::reverse(path.begin(), path.end());
+        return path;
+    }
 }
 
-class DFSImpl : public Algorithm {
-public:
-    std::string name() const override { return "DFS"; }
+std::string DFS::getName() const {
+    return "A*";
+}
 
-    Result solve(const Maze& maze, StepCallback cb = nullptr) override {
-        Result r{};
-        auto t0 = std::chrono::high_resolution_clock::now();
+Algorithm::Path DFS::solve(Maze& maze, VisitCallback onVisit) {
+    const int width = maze.width();
+    const int height = maze.height();
+    const int totalCells = width * height;
 
-        int w = maze.width();
-        int h = maze.height();
-        int n = w * h;
+    const Coord start = maze.getStart();
+    const Coord goal = maze.getGoal();
 
-        std::vector<int> visited(n, 0);
-        std::vector<Coord> parent(n, {-1, -1});
+    std::vector<bool> visited(totalCells, false);
+    std::vector<Coord> parent(totalCells, {-1, -1});
+    std::queue<Coord> q;
 
-        Coord start = maze.getStart();
-        Coord goal  = maze.getGoal();
+    q.push(start);
+    visited[toIndex(start, width)] = true;
 
-        std::stack<Coord> st;
-        st.push(start);
-        visited[keyDFS(start, w)] = 1;
+    while (!q.empty()) {
+        Coord current = q.front();
+        q.pop();
 
-        while (!st.empty()) {
-            Coord cur = st.top();
-            st.pop();
-            r.nodesExpanded++;
-
-            if (cb) cb(cur);
-
-            if (cur == goal) {
-                r.found = true;
-                break;
-            }
-
-            auto neigh = maze.neighbors(cur);
-            for (auto it = neigh.rbegin(); it != neigh.rend(); ++it) {
-                int k = keyDFS(*it, w);
-                if (!visited[k]) {
-                    visited[k] = 1;
-                    parent[k] = cur;
-                    st.push(*it);
-                }
-            }
+        if (onVisit) {
+            onVisit(current.first, current.second);
         }
 
-        if (r.found) {
-            Coord cur = goal;
-            while (cur != start) {
-                r.path.push_back(cur);
-                cur = parent[keyDFS(cur, w)];
-            }
-            r.path.push_back(start);
-            std::reverse(r.path.begin(), r.path.end());
+        if (current == goal) {
+            return reconstructPath(parent, start, goal, width);
         }
 
-        auto t1 = std::chrono::high_resolution_clock::now();
-        r.timeMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
-        return r;
+        for (const Coord& neighbor : maze.neighbors(current)) {
+            int index = toIndex(neighbor, width);
+            if (!visited[index]) {
+                visited[index] = true;
+                parent[index] = current;
+                q.push(neighbor);
+            }
+        }
     }
-};
 
-Algorithm* createDFS() {
-    return new DFSImpl();
+    return {};
 }

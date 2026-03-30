@@ -1,104 +1,103 @@
 #include "../header/AStar.h"
+#include "../../maze/Maze.h"
+#include <algorithm>
+#include <cmath>
+#include <limits>
 #include <queue>
 #include <vector>
-#include <algorithm>
-#include <limits>
-#include <chrono>
-#include <cmath>
-#include <iostream>
 
-static inline int keyA(const Coord& c, int w) {
-    return c.second * w + c.first;
-}
-
-static inline double heuristic(const Coord& a, const Coord& b) {
-    // Manhattan distance
-    return std::abs(a.first - b.first) + std::abs(a.second - b.second);
-}
-
-class AStarImpl : public Algorithm {
-public:
-    std::string name() const override { return "A*"; }
-
-    Result solve(const Maze& maze, StepCallback cb = nullptr) override {
-        Result r{};
-        auto t0 = std::chrono::high_resolution_clock::now();
-
-        int w = maze.width();
-        int h = maze.height();
-        int n = w * h;
-
-        const double INF = std::numeric_limits<double>::infinity();
-        std::vector<double> gScore(n, INF);
-        std::vector<double> fScore(n, INF);
-        std::vector<Coord> parent(n, {-1, -1});
-        std::vector<int> inOpen(n, 0);
-
-        Coord start = maze.getStart();
-        Coord goal  = maze.getGoal();
-
-        auto cmp = [](const std::pair<double, Coord>& a,
-                      const std::pair<double, Coord>& b) {
-            return a.first > b.first;
-        };
-        std::priority_queue<
-            std::pair<double, Coord>,
-            std::vector<std::pair<double, Coord>>,
-            decltype(cmp)
-        > open(cmp);
-
-        int ks = keyA(start, w);
-        gScore[ks] = 0.0;
-        fScore[ks] = heuristic(start, goal);
-        open.push({fScore[ks], start});
-        inOpen[ks] = 1;
-
-        while (!open.empty()) {
-            auto [f, cur] = open.top();
-            open.pop();
-
-            int kc = keyA(cur, w);
-            if (!inOpen[kc]) continue;
-            inOpen[kc] = 0;
-            r.nodesExpanded++;
-
-            if (cb) cb(cur);
-
-            if (cur == goal) {
-                r.found = true;
-                break;
-            }
-
-            for (auto nb : maze.neighbors(cur)) {
-                int kn = keyA(nb, w);
-                double tentative = gScore[kc] + 1.0;
-
-                if (tentative < gScore[kn]) {
-                    parent[kn] = cur;
-                    gScore[kn] = tentative;
-                    fScore[kn] = tentative + heuristic(nb, goal);
-                    open.push({fScore[kn], nb});
-                    inOpen[kn] = 1;
-                }
-            }
-        }
-
-        if (r.found) {
-            Coord cur = goal;
-            while (cur != start) {
-                r.path.push_back(cur);
-                cur = parent[keyA(cur, w)];
-            }
-            r.path.push_back(start);
-            std::reverse(r.path.begin(), r.path.end());
-        }
-
-        auto t1 = std::chrono::high_resolution_clock::now();
-        r.timeMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
-        return r;
+namespace {
+    int toIndex(const Algorithm::Coord& cell, int width) {
+        return cell.second * width + cell.first;
     }
-};
 
-Algorithm* createAStar() {
-    return new AStarImpl();
+    double heuristic(const Algorithm::Coord& a, const Algorithm::Coord& b) {
+        return std::abs(a.first - b.first) + std::abs(a.second - b.second);
+    }
+
+    Algorithm::Path reconstructPath(
+        const std::vector<Algorithm::Coord>& parent,
+        Algorithm::Coord start,
+        Algorithm::Coord goal,
+        int width
+    ) {
+        Algorithm::Path path;
+
+        if (goal != start && parent[toIndex(goal, width)] == Algorithm::Coord{-1, -1}) {
+            return path;
+        }
+
+        Algorithm::Coord current = goal;
+        while (current != start) {
+            path.push_back(current);
+            current = parent[toIndex(current, width)];
+        }
+
+        path.push_back(start);
+        std::reverse(path.begin(), path.end());
+        return path;
+    }
+}
+
+std::string AStar::getName() const {
+    return "A*";
+}
+
+Algorithm::Path AStar::solve(Maze& maze, VisitCallback onVisit) {
+    const int width = maze.width();
+    const int height = maze.height();
+    const int totalCells = width * height;
+
+    const Coord start = maze.getStart();
+    const Coord goal = maze.getGoal();
+
+    const double INF = std::numeric_limits<double>::infinity();
+
+    std::vector<double> gScore(totalCells, INF);
+    std::vector<double> fScore(totalCells, INF);
+    std::vector<Coord> parent(totalCells, {-1, -1});
+    std::vector<bool> closed(totalCells, false);
+
+    using Node = std::pair<double, Coord>;
+
+    auto compare = [](const Node& a, const Node& b) {
+        return a.first > b.first;
+    };
+
+    std::priority_queue<Node, std::vector<Node>, decltype(compare)> openSet(compare);
+
+    const int startIndex = toIndex(start, width);
+    gScore[startIndex] = 0.0;
+    fScore[startIndex] = heuristic(start, goal);
+    openSet.push({fScore[startIndex], start});
+
+    while (!openSet.empty()) {
+        Coord current = openSet.top().second;
+        openSet.pop();
+        const int currentIndex = toIndex(current, width);
+        if (closed[currentIndex]) {
+            continue;
+        }
+        closed[currentIndex] = true;
+        if (onVisit) {
+            onVisit(current.first, current.second);
+        }
+        if (current == goal) {
+            return reconstructPath(parent, start, goal, width);
+        }
+        for (const Coord& neighbor : maze.neighbors(current)) {
+            const int neighborIndex = toIndex(neighbor, width);
+            if (closed[neighborIndex]) {
+                continue;
+            }
+            const double tentativeGScore = gScore[currentIndex] + 1.0;
+            if (tentativeGScore < gScore[neighborIndex]) {
+                parent[neighborIndex] = current;
+                gScore[neighborIndex] = tentativeGScore;
+                fScore[neighborIndex] = tentativeGScore + heuristic(neighbor, goal);
+                openSet.push({fScore[neighborIndex], neighbor});
+            }
+        }
+    }
+    return {};
 }

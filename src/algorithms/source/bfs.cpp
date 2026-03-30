@@ -1,63 +1,84 @@
 #include "../header/bfs.h"
+#include "../../maze/Maze.h"
+#include <algorithm>
+#include <cmath>
+#include <limits>
 #include <queue>
 #include <vector>
-#include <algorithm>
-#include <chrono>
 
-static inline int keyBFS(const Coord& c, int w) {
-    return c.second * w + c.first;
+namespace {
+    int toIndex(const Algorithm::Coord& cell, int width) {
+        return cell.second * width + cell.first;
+    }
+
+    double heuristic(const Algorithm::Coord& a, const Algorithm::Coord& b) {
+        return std::abs(a.first - b.first) + std::abs(a.second - b.second);
+    }
+
+    Algorithm::Path reconstructPath(
+        const std::vector<Algorithm::Coord>& parent,
+        Algorithm::Coord start,
+        Algorithm::Coord goal,
+        int width
+    ) {
+        Algorithm::Path path;
+
+        if (goal != start && parent[toIndex(goal, width)] == Algorithm::Coord{-1, -1}) {
+            return path;
+        }
+
+        Algorithm::Coord current = goal;
+        while (current != start) {
+            path.push_back(current);
+            current = parent[toIndex(current, width)];
+        }
+
+        path.push_back(start);
+        std::reverse(path.begin(), path.end());
+        return path;
+    }
 }
 
-class BFSImpl : public Algorithm {
-public:
-    std::string name() const override { return "BFS"; }
+std::string BFS::getName() const {
+    return "A*";
+}
 
-    Result solve(const Maze& maze, StepCallback cb = nullptr) override {
-        Result r{};
-        auto t0 = std::chrono::high_resolution_clock::now();
-        int w = maze.width();
-        int h = maze.height();
-        int n = w * h;
-        std::vector<int> visited(n, 0);
-        std::vector<Coord> parent(n, {-1, -1});
-        Coord start = maze.getStart();
-        Coord goal  = maze.getGoal();
-        std::queue<Coord> q;
-        q.push(start);
-        visited[keyBFS(start, w)] = 1;
-        while (!q.empty()) {
-            Coord cur = q.front();
-            q.pop();
-            r.nodesExpanded++;
-            if (cb) cb(cur);
-            if (cur == goal) {
-                r.found = true;
-                break;
-            }
-            for (auto nb : maze.neighbors(cur)) {
-                int k = keyBFS(nb, w);
-                if (!visited[k]) {
-                    visited[k] = 1;
-                    parent[k] = cur;
-                    q.push(nb);
-                }
+Algorithm::Path BFS::solve(Maze& maze, VisitCallback onVisit) {
+    const int width = maze.width();
+    const int height = maze.height();
+    const int totalCells = width * height;
+
+    const Coord start = maze.getStart();
+    const Coord goal = maze.getGoal();
+
+    std::vector<bool> visited(totalCells, false);
+    std::vector<Coord> parent(totalCells, {-1, -1});
+    std::queue<Coord> q;
+
+    q.push(start);
+    visited[toIndex(start, width)] = true;
+
+    while (!q.empty()) {
+        Coord current = q.front();
+        q.pop();
+
+        if (onVisit) {
+            onVisit(current.first, current.second);
+        }
+
+        if (current == goal) {
+            return reconstructPath(parent, start, goal, width);
+        }
+
+        for (const Coord& neighbor : maze.neighbors(current)) {
+            int index = toIndex(neighbor, width);
+            if (!visited[index]) {
+                visited[index] = true;
+                parent[index] = current;
+                q.push(neighbor);
             }
         }
-        if (r.found) {
-            Coord cur = goal;
-            while (cur != start) {
-                r.path.push_back(cur);
-                cur = parent[keyBFS(cur, w)];
-            }
-            r.path.push_back(start);
-            std::reverse(r.path.begin(), r.path.end());
-        }
-        auto t1 = std::chrono::high_resolution_clock::now();
-        r.timeMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
-        return r;
     }
-};
 
-Algorithm* createBFS() {
-    return new BFSImpl();
+    return {};
 }
