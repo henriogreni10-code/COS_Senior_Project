@@ -1,19 +1,27 @@
 #pragma once
 
-#include "./maze/Maze.h"
-#include <vector>
-#include <string>
 #include <functional>
+#include <string>
+#include <utility>
+#include <vector>
 
 class Maze;
 
+using Coord = std::pair<int, int>;
+
+struct Result {
+    bool found = false;
+    std::vector<Coord> path;
+    int nodesExpanded = 0;
+    double timeMs = 0.0;
+};
+
 class Algorithm {
 public:
-    using Coord = std::pair<int, int>;
-    using Path = std::vector<Coord>;
-    using VisitCallback = std::function<void(int, int)>;
+    using StepCallback = std::function<void(const Coord&)>;
 
     virtual ~Algorithm() = default;
+
     virtual std::string getName() const = 0;
-    virtual Path solve(Maze& maze, VisitCallback onVisit = nullptr) = 0;
+    virtual Result solve(const Maze& maze, StepCallback cb = nullptr) = 0;
 };

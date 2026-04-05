@@ -1,16 +1,17 @@
 #include "../header/AlgorithmFactory.h"
+
+#include "../header/AStar.h"
 #include "../header/bfs.h"
 #include "../header/dfs.h"
 #include "../header/dijkstra.h"
-#include "../header/AStar.h"
 
 std::vector<std::unique_ptr<Algorithm>> createAlgorithms() {
-    std::vector<std::unique_ptr<Algorithm>> algorithms;
+    std::vector<std::unique_ptr<Algorithm>> v;
 
-    algorithms.push_back(std::make_unique<BFS>());
-    algorithms.push_back(std::make_unique<DFS>());
-    algorithms.push_back(std::make_unique<Dijkstra>());
-    algorithms.push_back(std::make_unique<AStar>());
+    v.push_back(std::make_unique<DFS>());
+    v.push_back(std::make_unique<BFS>());
+    v.push_back(std::make_unique<Dijkstra>());
+    v.push_back(std::make_unique<AStar>());
 
-    return algorithms;
+    return v;
 }
