@@ -1,84 +1,88 @@
 #include "../header/bfs.h"
 #include "../../maze/Maze.h"
+
 #include <algorithm>
-#include <cmath>
-#include <limits>
+#include <chrono>
 #include <queue>
 #include <vector>
 
 namespace {
-    int toIndex(const Algorithm::Coord& cell, int width) {
-        return cell.second * width + cell.first;
+    int toIndex(const Coord& c, int w) {
+        return c.second * w + c.first;
     }
 
-    double heuristic(const Algorithm::Coord& a, const Algorithm::Coord& b) {
-        return std::abs(a.first - b.first) + std::abs(a.second - b.second);
-    }
+    Result buildResult(const std::vector<Coord>& parent,
+                       Coord start, Coord goal, int w,
+                       int nodes, double timeMs)
+    {
+        Result r;
+        r.nodesExpanded = nodes;
+        r.timeMs = timeMs;
 
-    Algorithm::Path reconstructPath(
-        const std::vector<Algorithm::Coord>& parent,
-        Algorithm::Coord start,
-        Algorithm::Coord goal,
-        int width
-    ) {
-        Algorithm::Path path;
+        if (goal != start && parent[toIndex(goal,w)] == Coord{-1,-1})
+            return r;
 
-        if (goal != start && parent[toIndex(goal, width)] == Algorithm::Coord{-1, -1}) {
-            return path;
+        r.found = true;
+
+        Coord cur = goal;
+        while (cur != start) {
+            r.path.push_back(cur);
+            cur = parent[toIndex(cur,w)];
         }
-
-        Algorithm::Coord current = goal;
-        while (current != start) {
-            path.push_back(current);
-            current = parent[toIndex(current, width)];
-        }
-
-        path.push_back(start);
-        std::reverse(path.begin(), path.end());
-        return path;
+        r.path.push_back(start);
+        std::reverse(r.path.begin(), r.path.end());
+        return r;
     }
 }
 
 std::string BFS::getName() const {
-    return "A*";
+    return "BFS";
 }
 
-Algorithm::Path BFS::solve(Maze& maze, VisitCallback onVisit) {
-    const int width = maze.width();
-    const int height = maze.height();
-    const int totalCells = width * height;
+Result BFS::solve(const Maze& maze, StepCallback cb) {
+    auto t0 = std::chrono::high_resolution_clock::now();
 
-    const Coord start = maze.getStart();
-    const Coord goal = maze.getGoal();
+    int w = maze.width();
+    int h = maze.height();
+    int n = w * h;
 
-    std::vector<bool> visited(totalCells, false);
-    std::vector<Coord> parent(totalCells, {-1, -1});
+    std::vector<bool> visited(n, false);
+    std::vector<Coord> parent(n, {-1,-1});
+
+    Coord start = maze.getStart();
+    Coord goal  = maze.getGoal();
+
     std::queue<Coord> q;
 
+    int ks = toIndex(start,w);
+    visited[ks] = true;
     q.push(start);
-    visited[toIndex(start, width)] = true;
+
+    int expanded = 0;
 
     while (!q.empty()) {
-        Coord current = q.front();
+        Coord cur = q.front();
         q.pop();
 
-        if (onVisit) {
-            onVisit(current.first, current.second);
-        }
+        expanded++;
 
-        if (current == goal) {
-            return reconstructPath(parent, start, goal, width);
-        }
+        if (cb) cb(cur);
 
-        for (const Coord& neighbor : maze.neighbors(current)) {
-            int index = toIndex(neighbor, width);
-            if (!visited[index]) {
-                visited[index] = true;
-                parent[index] = current;
-                q.push(neighbor);
+        if (cur == goal) break;
+
+        for (auto nb : maze.neighbors(cur)) {
+            int kn = toIndex(nb,w);
+
+            if (!visited[kn]) {
+                visited[kn] = true;
+                parent[kn] = cur;
+                q.push(nb);
             }
         }
     }
 
-    return {};
+    auto t1 = std::chrono::high_resolution_clock::now();
+    double timeMs = std::chrono::duration<double,std::milli>(t1-t0).count();
+
+    return buildResult(parent,start,goal,w,expanded,timeMs);
 }

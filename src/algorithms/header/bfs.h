@@ -2,7 +2,7 @@
 #include "../../algorithm.h"
 
 class BFS : public Algorithm {
-    public:
+public:
     std::string getName() const override;
-    Path solve(Maze& maze, VisitCallback onVisit = nullptr) override;
+    Result solve(const Maze& maze, StepCallback cb = nullptr) override;
 };

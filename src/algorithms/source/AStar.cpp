@@ -1,41 +1,43 @@
 #include "../header/AStar.h"
 #include "../../maze/Maze.h"
+
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <queue>
 #include <vector>
 
 namespace {
-    int toIndex(const Algorithm::Coord& cell, int width) {
-        return cell.second * width + cell.first;
+    int toIndex(const Coord& c, int w) {
+        return c.second * w + c.first;
     }
 
-    double heuristic(const Algorithm::Coord& a, const Algorithm::Coord& b) {
+    double heuristic(const Coord& a, const Coord& b) {
         return std::abs(a.first - b.first) + std::abs(a.second - b.second);
     }
 
-    Algorithm::Path reconstructPath(
-        const std::vector<Algorithm::Coord>& parent,
-        Algorithm::Coord start,
-        Algorithm::Coord goal,
-        int width
-    ) {
-        Algorithm::Path path;
+    Result buildResult(const std::vector<Coord>& parent,
+                       Coord start, Coord goal, int w,
+                       int nodes, double timeMs)
+    {
+        Result r;
+        r.nodesExpanded = nodes;
+        r.timeMs = timeMs;
 
-        if (goal != start && parent[toIndex(goal, width)] == Algorithm::Coord{-1, -1}) {
-            return path;
+        if (goal != start && parent[toIndex(goal,w)] == Coord{-1,-1})
+            return r;
+
+        r.found = true;
+
+        Coord cur = goal;
+        while (cur != start) {
+            r.path.push_back(cur);
+            cur = parent[toIndex(cur,w)];
         }
-
-        Algorithm::Coord current = goal;
-        while (current != start) {
-            path.push_back(current);
-            current = parent[toIndex(current, width)];
-        }
-
-        path.push_back(start);
-        std::reverse(path.begin(), path.end());
-        return path;
+        r.path.push_back(start);
+        std::reverse(r.path.begin(), r.path.end());
+        return r;
     }
 }
 
@@ -43,61 +45,68 @@ std::string AStar::getName() const {
     return "A*";
 }
 
-Algorithm::Path AStar::solve(Maze& maze, VisitCallback onVisit) {
-    const int width = maze.width();
-    const int height = maze.height();
-    const int totalCells = width * height;
+Result AStar::solve(const Maze& maze, StepCallback cb) {
+    auto t0 = std::chrono::high_resolution_clock::now();
 
-    const Coord start = maze.getStart();
-    const Coord goal = maze.getGoal();
+    int w = maze.width();
+    int h = maze.height();
+    int n = w * h;
 
     const double INF = std::numeric_limits<double>::infinity();
 
-    std::vector<double> gScore(totalCells, INF);
-    std::vector<double> fScore(totalCells, INF);
-    std::vector<Coord> parent(totalCells, {-1, -1});
-    std::vector<bool> closed(totalCells, false);
+    std::vector<double> gScore(n, INF);
+    std::vector<double> fScore(n, INF);
+    std::vector<Coord> parent(n, {-1,-1});
+    std::vector<bool> closed(n, false);
+
+    Coord start = maze.getStart();
+    Coord goal  = maze.getGoal();
 
     using Node = std::pair<double, Coord>;
-
-    auto compare = [](const Node& a, const Node& b) {
+    auto cmp = [](const Node& a, const Node& b) {
         return a.first > b.first;
     };
 
-    std::priority_queue<Node, std::vector<Node>, decltype(compare)> openSet(compare);
+    std::priority_queue<Node, std::vector<Node>, decltype(cmp)> open(cmp);
 
-    const int startIndex = toIndex(start, width);
-    gScore[startIndex] = 0.0;
-    fScore[startIndex] = heuristic(start, goal);
-    openSet.push({fScore[startIndex], start});
+    int ks = toIndex(start,w);
+    gScore[ks] = 0.0;
+    fScore[ks] = heuristic(start,goal);
+    open.push({fScore[ks], start});
 
-    while (!openSet.empty()) {
-        Coord current = openSet.top().second;
-        openSet.pop();
-        const int currentIndex = toIndex(current, width);
-        if (closed[currentIndex]) {
-            continue;
-        }
-        closed[currentIndex] = true;
-        if (onVisit) {
-            onVisit(current.first, current.second);
-        }
-        if (current == goal) {
-            return reconstructPath(parent, start, goal, width);
-        }
-        for (const Coord& neighbor : maze.neighbors(current)) {
-            const int neighborIndex = toIndex(neighbor, width);
-            if (closed[neighborIndex]) {
-                continue;
-            }
-            const double tentativeGScore = gScore[currentIndex] + 1.0;
-            if (tentativeGScore < gScore[neighborIndex]) {
-                parent[neighborIndex] = current;
-                gScore[neighborIndex] = tentativeGScore;
-                fScore[neighborIndex] = tentativeGScore + heuristic(neighbor, goal);
-                openSet.push({fScore[neighborIndex], neighbor});
+    int expanded = 0;
+
+    while (!open.empty()) {
+        Coord cur = open.top().second;
+        open.pop();
+
+        int kc = toIndex(cur,w);
+        if (closed[kc]) continue;
+        closed[kc] = true;
+
+        expanded++;
+
+        if (cb) cb(cur);
+
+        if (cur == goal) break;
+
+        for (auto nb : maze.neighbors(cur)) {
+            int kn = toIndex(nb,w);
+            if (closed[kn]) continue;
+
+            double tentative = gScore[kc] + 1.0;
+
+            if (tentative < gScore[kn]) {
+                parent[kn] = cur;
+                gScore[kn] = tentative;
+                fScore[kn] = tentative + heuristic(nb,goal);
+                open.push({fScore[kn], nb});
             }
         }
     }
-    return {};
+
+    auto t1 = std::chrono::high_resolution_clock::now();
+    double timeMs = std::chrono::duration<double,std::milli>(t1-t0).count();
+
+    return buildResult(parent,start,goal,w,expanded,timeMs);
 }
