@@ -1,84 +1,105 @@
 #include "../header/dijkstra.h"
 #include "../../maze/Maze.h"
+
 #include <algorithm>
-#include <cmath>
+#include <chrono>
 #include <limits>
 #include <queue>
 #include <vector>
 
 namespace {
-    int toIndex(const Algorithm::Coord& cell, int width) {
-        return cell.second * width + cell.first;
+    int toIndex(const Coord& c, int w) {
+        return c.second * w + c.first;
     }
 
-    double heuristic(const Algorithm::Coord& a, const Algorithm::Coord& b) {
-        return std::abs(a.first - b.first) + std::abs(a.second - b.second);
-    }
+    Result buildResult(const std::vector<Coord>& parent,
+                       Coord start, Coord goal, int w,
+                       int nodes, double timeMs)
+    {
+        Result r;
+        r.nodesExpanded = nodes;
+        r.timeMs = timeMs;
 
-    Algorithm::Path reconstructPath(
-        const std::vector<Algorithm::Coord>& parent,
-        Algorithm::Coord start,
-        Algorithm::Coord goal,
-        int width
-    ) {
-        Algorithm::Path path;
+        if (goal != start && parent[toIndex(goal,w)] == Coord{-1,-1})
+            return r;
 
-        if (goal != start && parent[toIndex(goal, width)] == Algorithm::Coord{-1, -1}) {
-            return path;
+        r.found = true;
+
+        Coord cur = goal;
+        while (cur != start) {
+            r.path.push_back(cur);
+            cur = parent[toIndex(cur,w)];
         }
-
-        Algorithm::Coord current = goal;
-        while (current != start) {
-            path.push_back(current);
-            current = parent[toIndex(current, width)];
-        }
-
-        path.push_back(start);
-        std::reverse(path.begin(), path.end());
-        return path;
+        r.path.push_back(start);
+        std::reverse(r.path.begin(), r.path.end());
+        return r;
     }
 }
 
 std::string Dijkstra::getName() const {
-    return "A*";
+    return "Dijkstra";
 }
 
-Algorithm::Path Dijkstra::solve(Maze& maze, VisitCallback onVisit) {
-    const int width = maze.width();
-    const int height = maze.height();
-    const int totalCells = width * height;
+Result Dijkstra::solve(const Maze& maze, StepCallback cb) {
+    auto t0 = std::chrono::high_resolution_clock::now();
 
-    const Coord start = maze.getStart();
-    const Coord goal = maze.getGoal();
+    int w = maze.width();
+    int h = maze.height();
+    int n = w * h;
 
-    std::vector<bool> visited(totalCells, false);
-    std::vector<Coord> parent(totalCells, {-1, -1});
-    std::queue<Coord> q;
+    const double INF = std::numeric_limits<double>::infinity();
 
-    q.push(start);
-    visited[toIndex(start, width)] = true;
+    std::vector<double> dist(n, INF);
+    std::vector<Coord> parent(n, {-1,-1});
+    std::vector<bool> closed(n, false);
 
-    while (!q.empty()) {
-        Coord current = q.front();
-        q.pop();
+    Coord start = maze.getStart();
+    Coord goal  = maze.getGoal();
 
-        if (onVisit) {
-            onVisit(current.first, current.second);
-        }
+    using Node = std::pair<double, Coord>;
 
-        if (current == goal) {
-            return reconstructPath(parent, start, goal, width);
-        }
+    auto cmp = [](const Node& a, const Node& b) {
+        return a.first > b.first;
+    };
 
-        for (const Coord& neighbor : maze.neighbors(current)) {
-            int index = toIndex(neighbor, width);
-            if (!visited[index]) {
-                visited[index] = true;
-                parent[index] = current;
-                q.push(neighbor);
+    std::priority_queue<Node, std::vector<Node>, decltype(cmp)> pq(cmp);
+
+    int ks = toIndex(start,w);
+    dist[ks] = 0.0;
+    pq.push({0.0, start});
+
+    int expanded = 0;
+
+    while (!pq.empty()) {
+        Coord cur = pq.top().second;
+        pq.pop();
+
+        int kc = toIndex(cur,w);
+        if (closed[kc]) continue;
+
+        closed[kc] = true;
+        expanded++;
+
+        if (cb) cb(cur);
+
+        if (cur == goal) break;
+
+        for (auto nb : maze.neighbors(cur)) {
+            int kn = toIndex(nb,w);
+            if (closed[kn]) continue;
+
+            double nd = dist[kc] + 1.0;
+
+            if (nd < dist[kn]) {
+                dist[kn] = nd;
+                parent[kn] = cur;
+                pq.push({nd, nb});
             }
         }
     }
 
-    return {};
+    auto t1 = std::chrono::high_resolution_clock::now();
+    double timeMs = std::chrono::duration<double,std::milli>(t1-t0).count();
+
+    return buildResult(parent,start,goal,w,expanded,timeMs);
 }
