@@ -3,7 +3,7 @@
 #include "ui/RendererSFML.h"
 
 int main() {
-    const int width  = 101;
+    const int width = 101;
     const int height = 71;
     const int cellSize = 10;
 

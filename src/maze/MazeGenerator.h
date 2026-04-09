@@ -1,7 +1,11 @@
 #pragma once
-#include "./Maze.h"
+
+#include "Maze.h"
 
 class MazeGenerator {
 public:
-    static void recursiveBacktracker(Maze& maze, unsigned seed = 0);
+    static void recursiveBacktracker(Maze& maze, unsigned int seed = 0);
+
+private:
+    static bool isSolvable(Maze& maze);
 };
