@@ -25,8 +25,9 @@ add_executable(MazeSolver
         tests/test_utils.h
         tests/test_maze.cpp
         tests/test_containers.cpp
-        tests/test_algorithms.cpp
         tests/test_generator.cpp
+        src/algorithms/header/AlgorithmFactory.h
+        src/algorithms/source/AlgorithmFactory.cpp
 )
 
 # Include directories
