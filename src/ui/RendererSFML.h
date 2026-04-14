@@ -13,7 +13,7 @@
 
 class RendererSFML {
 public:
-    RendererSFML(Maze& maze, int cellSize = 10);
+    RendererSFML(Maze& maze, int cellSize = 8);
     ~RendererSFML();
 
     void run();
@@ -53,7 +53,7 @@ private:
             shape.setOutlineThickness(2.f);
 
             text.setString(l);
-            text.setCharacterSize(14);
+            text.setCharacterSize(12);
             text.setFillColor(sf::Color::Black);
             text.setPosition({pos.x + 10.f, pos.y + 8.f});
         }
@@ -73,7 +73,11 @@ private:
     int m_cellSize;
     int m_winW;
     int m_winH;
-    int m_statsWidth = 280;
+    int m_statsWidth = 380;
+
+    float m_menuHeight = 60.f;
+    float m_buttonRowHeight = 40.f;
+    float m_buttonMargin = 6.f;
 
     sf::RenderWindow m_window;
     sf::Font m_font;
